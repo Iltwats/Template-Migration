@@ -1,7 +1,12 @@
-name: "deploy"
+name: "build"
 on:
   push:
-    branches: [ main ]
+    branches:
+      - master
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+    branches:
+      - master
 
 jobs:
   deploy: 
@@ -10,9 +15,9 @@ jobs:
     
     steps:
       - uses: actions/checkout@v2
-          with:
-            ref: development
-            persist-credentials: false
+        with:
+          ref: development
+          persist-credentials: false
       
       - name: use node.js v14
         uses: actions/setup-node@v1
@@ -26,3 +31,4 @@ jobs:
           npm install
           npm run build 
           npm run test
+    
