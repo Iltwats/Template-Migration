@@ -3,52 +3,90 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"net/http"
-	"strings"
+	"time"
 )
 
-type release struct {
-	tag_name string
+const APIEndpoint = "https://api.github.com/repos/"
+
+type Release struct {
+	TagName     string    `json:"tag_name"`
+	CreatedAt   time.Time `json:"created_at"`
+	PublishedAt time.Time `json:"published_at"`
+}
+
+type Commits struct {
+	SHA    string          `json:"sha"`
+	NodeID string          `json:"node_id"`
+	Url    string          `json:"html_url"`
+	Parent []ParentCommits `json:"parents"`
+}
+
+// ParentCommits sub-structure of Commits
+type ParentCommits struct {
+	Sha     string `json:"sha"`
+	Url     string `json:"url"`
+	HtmlUrl string `json:"html_url"`
+}
+
+// Fetch all the release tags available for stack repository
+func getReleases(url string) ([]Release, error) {
+	resp, err := http.Get(url)
+	if err != nil {
+		log.Fatalln(err)
+	}
+	var release []Release
+	parseError := json.NewDecoder(resp.Body).Decode(&release)
+	defer resp.Body.Close()
+	return release, parseError
+
+}
+
+// Fetch all the commits to its corresponding tags available for stack repository
+func getCommits(url string) (Commits, error) {
+	resp, err := http.Get(url)
+	if err != nil {
+		log.Fatalln(err)
+	}
+	var commits Commits
+	parseError := json.NewDecoder(resp.Body).Decode(&commits)
+
+	defer resp.Body.Close()
+	return commits, parseError
+
+}
+
+// Method to indent the JSON and view
+func printIndentedJSON(ert interface{}) {
+	data, err := json.MarshalIndent(ert, "", "    ")
+	if err != nil {
+		log.Fatalf("JSON marshaling failed: %s", err)
+	}
+	fmt.Printf("%s\n", data)
 }
 
 func main() {
-
 	username := "Iltwats"
 	repoName := "template-template"
-	releaseTags := fmt.Sprintf("https://api.github.com/repos/%s/%s/releases", username, repoName)
-	resp, err := http.Get(releaseTags)
+	releaseURL := fmt.Sprintf(APIEndpoint+"%s/%s/releases", username, repoName)
+	releaseData, err := getReleases(releaseURL)
 	if err != nil {
 		log.Fatalln(err)
 	}
-	releaseData, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		log.Fatalln(err)
+	// extract all the tags
+	var tags []string
+	for _, val := range releaseData {
+		tags = append(tags, val.TagName)
 	}
-	jso := string(releaseData)
-	res := json.Unmarshal(releaseData, *release)
-	//fmt.Println(json)
-	var tag []map[string]string
-	jsonMap := map[string]string{}
-	for i := range json {
-		nm := string(json[i])
-		if strings.Contains(nm, "tag-name") {
-			jsonMap["tag-name"] = nm
-		}
-		tag = append(tag, jsonMap)
+	//fmt.Println(tags)
+	tag := tags[2]
+	commitsUrl := fmt.Sprintf(APIEndpoint+"%s/%s/commits/%s", username, repoName, tag)
+	fmt.Println(commitsUrl)
+	commitsResp, comErr := getCommits(commitsUrl)
+	if comErr != nil {
+		panic(comErr)
 	}
-	fmt.Println(tag[0])
-	//url := fmt.Sprintf("https://api.github.com/repos/%s/%s/commits/%s", username, repoName, tag)
-	////fmt.Println(url)
-	//response, err := http.Get(url)
-	//if err != nil {
-	//	log.Fatalln(err)
-	//}
-	//data, err := ioutil.ReadAll(response.Body)
-	//if err != nil {
-	//	log.Fatalln(err)
-	//}
-	//json := string(data)
-	//fmt.Println(json)
+	printIndentedJSON(commitsResp)
+
 }
