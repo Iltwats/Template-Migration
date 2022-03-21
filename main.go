@@ -32,6 +32,32 @@ type ParentCommits struct {
 	HtmlUrl string `json:"html_url"`
 }
 
+func main() {
+	username := "Iltwats"
+	repoName := "template-template"
+	releaseURL := fmt.Sprintf(APIEndpoint+"%s/%s/releases", username, repoName)
+	releaseData, err := getReleases(releaseURL)
+	if err != nil {
+		log.Fatalln(err)
+	}
+	// extract all the tags
+	var tags []string
+	for _, val := range releaseData {
+		tags = append(tags, val.TagName)
+	}
+	//fmt.Println(tags)
+	tag := tags[2]
+	commitsUrl := fmt.Sprintf(APIEndpoint+"%s/%s/commits/%s", username, repoName, tag)
+	fmt.Println(commitsUrl)
+	commitsResp, comErr := getCommits(commitsUrl)
+	if comErr != nil {
+		panic(comErr)
+	}
+
+	savePatchFile(commitsResp.Url, tag)
+
+}
+
 // Fetch all the release tags available for stack repository
 func getReleases(url string) ([]Release, error) {
 	resp, err := http.Get(url)
@@ -77,30 +103,4 @@ func savePatchFile(url string, tag string) {
 	resp, _ := client.Get(url + ".patch")
 	defer resp.Body.Close()
 	_, _ = io.Copy(out, resp.Body)
-}
-
-func main() {
-	username := "Iltwats"
-	repoName := "template-template"
-	releaseURL := fmt.Sprintf(APIEndpoint+"%s/%s/releases", username, repoName)
-	releaseData, err := getReleases(releaseURL)
-	if err != nil {
-		log.Fatalln(err)
-	}
-	// extract all the tags
-	var tags []string
-	for _, val := range releaseData {
-		tags = append(tags, val.TagName)
-	}
-	//fmt.Println(tags)
-	tag := tags[2]
-	commitsUrl := fmt.Sprintf(APIEndpoint+"%s/%s/commits/%s", username, repoName, tag)
-	fmt.Println(commitsUrl)
-	commitsResp, comErr := getCommits(commitsUrl)
-	if comErr != nil {
-		panic(comErr)
-	}
-
-	savePatchFile(commitsResp.Url, tag)
-
 }
