@@ -3,8 +3,10 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
+	"os"
 	"time"
 )
 
@@ -66,6 +68,17 @@ func printIndentedJSON(ert interface{}) {
 	fmt.Printf("%s\n", data)
 }
 
+// Method to download and save patch file
+func savePatchFile(url string, tag string) {
+	out, _ := os.Create(tag + ".patch")
+	defer out.Close()
+	// timeout if it takes more than 5 secs
+	client := http.Client{Timeout: 5 * time.Second}
+	resp, _ := client.Get(url + ".patch")
+	defer resp.Body.Close()
+	_, _ = io.Copy(out, resp.Body)
+}
+
 func main() {
 	username := "Iltwats"
 	repoName := "template-template"
@@ -87,6 +100,7 @@ func main() {
 	if comErr != nil {
 		panic(comErr)
 	}
-	printIndentedJSON(commitsResp)
+
+	savePatchFile(commitsResp.Url, tag)
 
 }
