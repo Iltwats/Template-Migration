@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -33,8 +34,15 @@ type ParentCommits struct {
 }
 
 func main() {
-	username := "Iltwats"
-	repoName := "template-template"
+	fmt.Println("Enter the stack repository in form of User/RepoName")
+	var stackURL string
+	_, err := fmt.Scanln(&stackURL)
+	if err != nil {
+		return
+	}
+	userInput := strings.Split(stackURL, "/")
+	username := userInput[0]
+	repoName := userInput[1]
 	releaseURL := fmt.Sprintf(APIEndpoint+"%s/%s/releases", username, repoName)
 	releaseData, err := getReleases(releaseURL)
 	if err != nil {
@@ -48,7 +56,6 @@ func main() {
 	//fmt.Println(tags)
 	tag := tags[2]
 	commitsUrl := fmt.Sprintf(APIEndpoint+"%s/%s/commits/%s", username, repoName, tag)
-	fmt.Println(commitsUrl)
 	commitsResp, comErr := getCommits(commitsUrl)
 	if comErr != nil {
 		panic(comErr)
