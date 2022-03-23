@@ -1,12 +1,18 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"github.com/cli/safeexec"
 	"io"
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 )
@@ -34,7 +40,7 @@ type ParentCommits struct {
 }
 
 func main() {
-	fmt.Println("Enter the stack repository in form of User/RepoName")
+	fmt.Println("Enter the stack repository in form of (User/RepoName)")
 	var stackURL string
 	_, err := fmt.Scanln(&stackURL)
 	if err != nil {
@@ -54,15 +60,61 @@ func main() {
 		tags = append(tags, val.TagName)
 	}
 	//fmt.Println(tags)
-	tag := tags[2]
-	commitsUrl := fmt.Sprintf(APIEndpoint+"%s/%s/commits/%s", username, repoName, tag)
-	commitsResp, comErr := getCommits(commitsUrl)
-	if comErr != nil {
-		panic(comErr)
+	tagSelectedByUser := tags[3]
+	//userRepoConsumedTag := tags[2] // TODO fetch from API
+	isUserRepoStackConsumed := true // TODO fetch from API
+
+	if isUserRepoStackConsumed {
+		commitsUrl := fmt.Sprintf(APIEndpoint+"%s/%s/commits/%s", username, repoName, tagSelectedByUser)
+		commitsResp, comErr := getCommits(commitsUrl)
+		if comErr != nil {
+			panic(comErr)
+		}
+		savePatchFile(commitsResp.Url, tagSelectedByUser)
+		applyPatchFile()
 	}
 
-	savePatchFile(commitsResp.Url, tag)
+}
 
+func applyPatchFile() {
+	err := CheckoutBranch("patch-apply")
+	if err != nil {
+		return
+	}
+}
+
+func CheckoutBranch(branch string) error {
+	configCmd, err := GitCommand("checkout", "-b", branch)
+	if err != nil {
+		return err
+	}
+	return PrepareCmd(configCmd).Run()
+}
+func GitCommand(args ...string) (*exec.Cmd, error) {
+	gitExe, err := safeexec.LookPath("git")
+	if err != nil {
+		if errors.Is(err, exec.ErrNotFound) {
+			programName := "git"
+			if runtime.GOOS == "windows" {
+				programName = "Git for Windows"
+			}
+			return nil, &NotInstalled{
+				message: fmt.Sprintf("unable to find git executable in PATH; please install %s before retrying", programName),
+				error:   err,
+			}
+		}
+		return nil, err
+	}
+	return exec.Command(gitExe, args...), nil
+}
+
+type NotInstalled struct {
+	message string
+	error
+}
+
+func (e *NotInstalled) Error() string {
+	return e.message
 }
 
 // Fetch all the release tags available for stack repository
@@ -110,4 +162,77 @@ func savePatchFile(url string, tag string) {
 	resp, _ := client.Get(url + ".patch")
 	defer resp.Body.Close()
 	_, _ = io.Copy(out, resp.Body)
+}
+
+// Runnable is typically an exec.Cmd or its stub in tests
+type Runnable interface {
+	Output() ([]byte, error)
+	Run() error
+}
+
+// PrepareCmd extends exec.Cmd with extra error reporting features and provides a
+// hook to stub command execution in tests
+var PrepareCmd = func(cmd *exec.Cmd) Runnable {
+	return &cmdWithStderr{cmd}
+}
+
+// cmdWithStderr augments exec.Cmd by adding stderr to the error message
+type cmdWithStderr struct {
+	*exec.Cmd
+}
+
+func (c cmdWithStderr) Output() ([]byte, error) {
+	if os.Getenv("DEBUG") != "" {
+		_ = printArgs(os.Stderr, c.Cmd.Args)
+	}
+	if c.Cmd.Stderr != nil {
+		return c.Cmd.Output()
+	}
+	errStream := &bytes.Buffer{}
+	c.Cmd.Stderr = errStream
+	out, err := c.Cmd.Output()
+	if err != nil {
+		err = &CmdError{errStream, c.Cmd.Args, err}
+	}
+	return out, err
+}
+
+func (c cmdWithStderr) Run() error {
+	if os.Getenv("DEBUG") != "" {
+		_ = printArgs(os.Stderr, c.Cmd.Args)
+	}
+	if c.Cmd.Stderr != nil {
+		return c.Cmd.Run()
+	}
+	errStream := &bytes.Buffer{}
+	c.Cmd.Stderr = errStream
+	err := c.Cmd.Run()
+	if err != nil {
+		err = &CmdError{errStream, c.Cmd.Args, err}
+	}
+	return err
+}
+
+// CmdError provides more visibility into why an exec.Cmd had failed
+type CmdError struct {
+	Stderr *bytes.Buffer
+	Args   []string
+	Err    error
+}
+
+func (e CmdError) Error() string {
+	msg := e.Stderr.String()
+	if msg != "" && !strings.HasSuffix(msg, "\n") {
+		msg += "\n"
+	}
+	return fmt.Sprintf("%s%s: %s", msg, e.Args[0], e.Err)
+}
+
+func printArgs(w io.Writer, args []string) error {
+	if len(args) > 0 {
+		// print commands, but omit the full path to an executable
+		args = append([]string{filepath.Base(args[0])}, args[1:]...)
+	}
+	_, err := fmt.Fprintf(w, "%v\n", args)
+	return err
 }
