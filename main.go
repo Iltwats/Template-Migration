@@ -60,7 +60,7 @@ func main() {
 		tags = append(tags, val.TagName)
 	}
 	//fmt.Println(tags)
-	tagSelectedByUser := tags[3]
+	tagSelectedByUser := tags[2]
 	//userRepoConsumedTag := tags[2] // TODO fetch from API
 	isUserRepoStackConsumed := true // TODO fetch from API
 
@@ -70,17 +70,41 @@ func main() {
 		if comErr != nil {
 			panic(comErr)
 		}
-		savePatchFile(commitsResp.Url, tagSelectedByUser)
-		applyPatchFile()
+		parents := commitsResp.Parent
+		var parentUrls []string
+		for _, parent := range parents {
+			parentUrls = append(parentUrls, parent.HtmlUrl)
+		}
+
+		var patchFileUrls []string
+		patchFileUrls = append(patchFileUrls, commitsResp.Url)
+		for _, url := range parentUrls {
+			patchFileUrls = append(patchFileUrls, url)
+		}
+
+		savePatchFile(patchFileUrls, tagSelectedByUser)
+		//applyPatchFile(tagSelectedByUser)
 	}
 
 }
 
-func applyPatchFile() {
-	err := CheckoutBranch("patch-apply")
+func applyPatchFile(tag string) {
+	err := CheckoutBranch("patch-apply-1")
 	if err != nil {
-		return
+		panic("Checkout " + err.Error())
 	}
+	patchErr := ApplyPatch(tag + ".patch")
+	if patchErr != nil {
+		panic("Patch " + patchErr.Error())
+	}
+}
+
+func ApplyPatch(filename string) error {
+	patch, err := GitCommand("am", filename)
+	if err != nil {
+		return err
+	}
+	return PrepareCmd(patch).Run()
 }
 
 func CheckoutBranch(branch string) error {
@@ -154,14 +178,21 @@ func printIndentedJSON(ert interface{}) {
 }
 
 // Method to download and save patch file
-func savePatchFile(url string, tag string) {
-	out, _ := os.Create(tag + ".patch")
-	defer out.Close()
-	// timeout if it takes more than 5 secs
-	client := http.Client{Timeout: 5 * time.Second}
-	resp, _ := client.Get(url + ".patch")
-	defer resp.Body.Close()
-	_, _ = io.Copy(out, resp.Body)
+func savePatchFile(urls []string, tag string) {
+	fmt.Println("Downloading Patch files...")
+	for i, url := range urls {
+		i = len(urls) - 1 - i
+		name := fmt.Sprintf("%s-%d", tag, i)
+		out, _ := os.Create(name + ".patch")
+		// timeout if it takes more than 10 secs
+		client := http.Client{Timeout: 10 * time.Second}
+		resp, _ := client.Get(url + ".patch")
+		_, _ = io.Copy(out, resp.Body)
+		fmt.Printf("Download complete for patch-%d\n", i)
+		resp.Body.Close()
+		out.Close()
+
+	}
 }
 
 // Runnable is typically an exec.Cmd or its stub in tests
