@@ -51,6 +51,7 @@ func main() {
 	repoName := userInput[1]
 	releaseURL := fmt.Sprintf(APIEndpoint+"%s/%s/releases", username, repoName)
 	releaseData, err := getReleases(releaseURL)
+	fmt.Println("Fetching all the release tags...")
 	if err != nil {
 		log.Fatalln(err)
 	}
@@ -60,13 +61,14 @@ func main() {
 		tags = append(tags, val.TagName)
 	}
 	//fmt.Println(tags)
-	tagSelectedByUser := tags[2]
+	tagSelectedByUser := tags[0]
 	//userRepoConsumedTag := tags[2] // TODO fetch from API
 	isUserRepoStackConsumed := true // TODO fetch from API
 
 	if isUserRepoStackConsumed {
 		commitsUrl := fmt.Sprintf(APIEndpoint+"%s/%s/commits/%s", username, repoName, tagSelectedByUser)
 		commitsResp, comErr := getCommits(commitsUrl)
+		fmt.Println("Fetching all the commits for each tags...")
 		if comErr != nil {
 			panic(comErr)
 		}
@@ -82,21 +84,76 @@ func main() {
 			patchFileUrls = append(patchFileUrls, url)
 		}
 
-		savePatchFile(patchFileUrls, tagSelectedByUser)
-		//applyPatchFile(tagSelectedByUser)
+		isPatchFileDownloaded := savePatchFile(patchFileUrls, tagSelectedByUser)
+
+		if isPatchFileDownloaded {
+			applyPatchFile(tagSelectedByUser, len(patchFileUrls))
+		}
 	}
 
 }
 
-func applyPatchFile(tag string) {
-	err := CheckoutBranch("patch-apply-1")
+func applyPatchFile(tag string, indices int) {
+	branchName := "patch-apply"
+	err := CheckoutBranch(branchName)
 	if err != nil {
 		panic("Checkout " + err.Error())
 	}
-	patchErr := ApplyPatch(tag + ".patch")
-	if patchErr != nil {
-		panic("Patch " + patchErr.Error())
+	var patchFileNames []string
+	for i := 0; i < indices; i++ {
+		name := fmt.Sprintf("%s-%d.patch", tag, i)
+		patchFileNames = append(patchFileNames, name)
 	}
+	for _, name := range patchFileNames {
+		patchErr := ApplyPatch(name)
+		if patchErr != nil {
+			panic("Patch " + patchErr.Error())
+			return
+		}
+	}
+	fmt.Println("All the patch files applied successfully.")
+	isCacheCleared := DeleteCache(patchFileNames)
+	if isCacheCleared {
+		pushErr := pushTheBranch(branchName)
+		if pushErr != nil {
+			log.Fatalln("Error while pushing ", pushErr)
+		}
+		fmt.Println("Successfully pushed to remote")
+		raiseAPullRequest()
+	}
+
+}
+
+func raiseAPullRequest() {
+	fmt.Println("Creating a pull request...")
+	prTitle := "Migration-patch"
+	prBody := "PR to migrate to latest stack version"
+	cmd, err := exec.Command("gh", "pr", "create", "--title", prTitle, "--body", prBody).Output()
+	if err != nil {
+		fmt.Println("Error while creating a PR", err)
+	}
+	fmt.Println("To complete the merge, merge this PR by going to the following link: ", string(cmd))
+}
+
+func pushTheBranch(name string) error {
+	fmt.Println("Pushing the branch to remote..")
+	pushCmd, err := GitCommand("push", "--set-upstream", "origin", name)
+	if err != nil {
+		return err
+	}
+	return PrepareCmd(pushCmd).Run()
+}
+
+func DeleteCache(names []string) bool {
+	for _, name := range names {
+		_, err := exec.Command("rm", "-rf", name).Output()
+		if err != nil {
+			fmt.Println("Error while deleting", err)
+			return false
+		}
+	}
+	fmt.Println("Patch files cache removed ")
+	return true
 }
 
 func ApplyPatch(filename string) error {
@@ -178,21 +235,26 @@ func printIndentedJSON(ert interface{}) {
 }
 
 // Method to download and save patch file
-func savePatchFile(urls []string, tag string) {
+func savePatchFile(urls []string, tag string) bool {
 	fmt.Println("Downloading Patch files...")
+	var fileLen = 0
 	for i, url := range urls {
 		i = len(urls) - 1 - i
 		name := fmt.Sprintf("%s-%d", tag, i)
 		out, _ := os.Create(name + ".patch")
 		// timeout if it takes more than 10 secs
 		client := http.Client{Timeout: 10 * time.Second}
-		resp, _ := client.Get(url + ".patch")
+		resp, err := client.Get(url + ".patch")
+		if err != nil {
+			log.Fatalln("Timeout", err.Error())
+		}
 		_, _ = io.Copy(out, resp.Body)
-		fmt.Printf("Download complete for patch-%d\n", i)
+		fmt.Printf("Download complete for patch file -%d\n", i)
+		fileLen++
 		resp.Body.Close()
 		out.Close()
-
 	}
+	return fileLen == len(urls)
 }
 
 // Runnable is typically an exec.Cmd or its stub in tests
