@@ -40,15 +40,16 @@ type ParentCommits struct {
 }
 
 func main() {
-	fmt.Println("Enter the stack repository in form of (User/RepoName)")
-	var stackURL string
-	_, err := fmt.Scanln(&stackURL)
-	if err != nil {
-		return
-	}
-	userInput := strings.Split(stackURL, "/")
-	username := userInput[0]
-	repoName := userInput[1]
+
+	//fmt.Println("Enter the stack repository in form of (User/RepoName)")
+	//var stackURL string
+	//_, err := fmt.Scanln(&stackURL)
+	//if err != nil {
+	//	return
+	//}
+	//userInput := strings.Split(stackURL, "/")
+	username := "Iltwats"
+	repoName := "template-template"
 	releaseURL := fmt.Sprintf(APIEndpoint+"%s/%s/releases", username, repoName)
 	releaseData, err := getReleases(releaseURL)
 	fmt.Println("Fetching all the release tags...")
@@ -62,9 +63,10 @@ func main() {
 	}
 	//fmt.Println(tags)
 	tagSelectedByUser := tags[0]
-	//userRepoConsumedTag := tags[2] // TODO fetch from API
+	userRepoConsumedTag := tags[1]  // TODO fetch from API
 	isUserRepoStackConsumed := true // TODO fetch from API
-
+	message := fmt.Sprintf("Upgrading this repository from version %s to version %s", userRepoConsumedTag, tagSelectedByUser)
+	fmt.Println(message)
 	if isUserRepoStackConsumed {
 		commitsUrl := fmt.Sprintf(APIEndpoint+"%s/%s/commits/%s", username, repoName, tagSelectedByUser)
 		commitsResp, comErr := getCommits(commitsUrl)
@@ -118,7 +120,7 @@ func applyPatchFile(tag string, indices int) {
 		if pushErr != nil {
 			log.Fatalln("Error while pushing ", pushErr)
 		}
-		fmt.Println("Successfully pushed to remote")
+		fmt.Println("Successfully pushed the branch to remote")
 		raiseAPullRequest()
 	}
 
@@ -156,6 +158,7 @@ func DeleteCache(names []string) bool {
 	return true
 }
 
+// ApplyPatch applying the patch files
 func ApplyPatch(filename string) error {
 	patch, err := GitCommand("am", filename)
 	if err != nil {
@@ -164,38 +167,13 @@ func ApplyPatch(filename string) error {
 	return PrepareCmd(patch).Run()
 }
 
+// CheckoutBranch Checkout Branch from master
 func CheckoutBranch(branch string) error {
 	configCmd, err := GitCommand("checkout", "-b", branch)
 	if err != nil {
 		return err
 	}
 	return PrepareCmd(configCmd).Run()
-}
-func GitCommand(args ...string) (*exec.Cmd, error) {
-	gitExe, err := safeexec.LookPath("git")
-	if err != nil {
-		if errors.Is(err, exec.ErrNotFound) {
-			programName := "git"
-			if runtime.GOOS == "windows" {
-				programName = "Git for Windows"
-			}
-			return nil, &NotInstalled{
-				message: fmt.Sprintf("unable to find git executable in PATH; please install %s before retrying", programName),
-				error:   err,
-			}
-		}
-		return nil, err
-	}
-	return exec.Command(gitExe, args...), nil
-}
-
-type NotInstalled struct {
-	message string
-	error
-}
-
-func (e *NotInstalled) Error() string {
-	return e.message
 }
 
 // Fetch all the release tags available for stack repository
@@ -225,15 +203,6 @@ func getCommits(url string) (Commits, error) {
 
 }
 
-// Method to indent the JSON and view
-func printIndentedJSON(ert interface{}) {
-	data, err := json.MarshalIndent(ert, "", "    ")
-	if err != nil {
-		log.Fatalf("JSON marshaling failed: %s", err)
-	}
-	fmt.Printf("%s\n", data)
-}
-
 // Method to download and save patch file
 func savePatchFile(urls []string, tag string) bool {
 	fmt.Println("Downloading Patch files...")
@@ -249,12 +218,49 @@ func savePatchFile(urls []string, tag string) bool {
 			log.Fatalln("Timeout", err.Error())
 		}
 		_, _ = io.Copy(out, resp.Body)
-		fmt.Printf("Download complete for patch file -%d\n", i)
 		fileLen++
 		resp.Body.Close()
 		out.Close()
 	}
+	fmt.Println("Download complete for all patch files.")
 	return fileLen == len(urls)
+}
+
+// Method to indent the JSON and view
+func printIndentedJSON(ert interface{}) {
+	data, err := json.MarshalIndent(ert, "", "    ")
+	if err != nil {
+		log.Fatalf("JSON marshaling failed: %s", err)
+	}
+	fmt.Printf("%s\n", data)
+}
+
+// GitCommand Misc Functions
+func GitCommand(args ...string) (*exec.Cmd, error) {
+	gitExe, err := safeexec.LookPath("git")
+	if err != nil {
+		if errors.Is(err, exec.ErrNotFound) {
+			programName := "git"
+			if runtime.GOOS == "windows" {
+				programName = "Git for Windows"
+			}
+			return nil, &NotInstalled{
+				message: fmt.Sprintf("unable to find git executable in PATH; please install %s before retrying", programName),
+				error:   err,
+			}
+		}
+		return nil, err
+	}
+	return exec.Command(gitExe, args...), nil
+}
+
+type NotInstalled struct {
+	message string
+	error
+}
+
+func (e *NotInstalled) Error() string {
+	return e.message
 }
 
 // Runnable is typically an exec.Cmd or its stub in tests
