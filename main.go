@@ -65,6 +65,7 @@ func main() {
 	tagSelectedByUser := tags[0]
 	userRepoConsumedTag := tags[1]  // TODO fetch from API
 	isUserRepoStackConsumed := true // TODO fetch from API
+	fmt.Printf("Current version of the repository: %s\n", userRepoConsumedTag)
 	message := fmt.Sprintf("Upgrading this repository from version %s to version %s", userRepoConsumedTag, tagSelectedByUser)
 	fmt.Println(message)
 	if isUserRepoStackConsumed {
