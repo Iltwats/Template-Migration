@@ -30,13 +30,6 @@ type ParentCommits struct {
 
 func main() {
 
-	//fmt.Println("Enter the stack repository in form of (User/RepoName)")
-	//var stackURL string
-	//_, err := fmt.Scanln(&stackURL)
-	//if err != nil {
-	//	return
-	//}
-	//userInput := strings.Split(stackURL, "/")
 	username := "Iltwats"
 	repoName := "template-template"
 	releaseURL := fmt.Sprintf(APIEndpoint+"%s/%s/releases", username, repoName)
