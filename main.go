@@ -38,7 +38,7 @@ func main() {
 	if err != nil {
 		log.Fatalln(err)
 	}
-	// extract all the tags
+	// extract all the tags from commit json response
 	var tags []string
 	for _, val := range releaseData {
 		tags = append(tags, val.TagName)
