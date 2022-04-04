@@ -43,7 +43,7 @@ func main() {
 	for _, val := range releaseData {
 		tags = append(tags, val.TagName)
 	}
-	//fmt.Println(tags)
+
 	tagSelectedByUser := tags[0]
 	userRepoConsumedTag := tags[1]  // TODO fetch from API
 	isUserRepoStackConsumed := true // TODO fetch from API
